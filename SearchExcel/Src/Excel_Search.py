@@ -74,7 +74,7 @@ class ExcelSearcher:
         self.searching = False
         return files_with_text
 
-    def cancel_search(self):
+    def stop_search(self):
         self.searching = False
 
 
@@ -135,13 +135,17 @@ class App:
         self.button_search = tk.Button(root, text="Search", command=self.start_search)
         self.button_search.grid(row=5, column=1, padx=10, pady=10)
 
-        # Cancel button
-        self.button_cancel = tk.Button(root, text="Cancel", command=self.cancel_search, state=tk.DISABLED)
-        self.button_cancel.grid(row=5, column=2, padx=10, pady=10)
+        # Stop search button
+        self.button_stop_search = tk.Button(root, text="Stop", command=self.stop_search, state=tk.DISABLED)
+        self.button_stop_search.grid(row=5, column=2, padx=10, pady=10)
         
         # Results display
         self.text_results = tk.Text(root, width=80, height=20)
         self.text_results.grid(row=6, column=0, columnspan=3, padx=10, pady=10)
+
+        # Close button
+        self.button_close = tk.Button(root, text="Close", command=self.close_application)
+        self.button_close.grid(row=5, column=3, padx=10, pady=10)
 
         self.last_update_time = 0  # Variable to keep track of the last update time
 
@@ -169,18 +173,25 @@ class App:
     def start_search(self):
         self.searching = True
         self.button_search.config(state=tk.DISABLED)
-        self.button_cancel.config(state=tk.NORMAL)
+        self.button_stop_search.config(state=tk.NORMAL)
         self.text_results.delete(1.0, tk.END)
         start_index = self.text_results.index(tk.INSERT)
         self.root.after(0, lambda si=start_index, fn=f"Searching:": "Dir: ")
         search_thread = threading.Thread(target=self.search_files)
+        search_thread.daemon = True  # Make the thread a daemon thread
         search_thread.start()
 
-    def cancel_search(self):
-        self.searcher.cancel_search()  # Cancel the search in the searcher instance
+    def stop_search(self):
+        self.searcher.stop_search()  # stop_search the search in the searcher instance
         self.searching = False
         self.button_search.config(state=tk.NORMAL)
-        self.button_cancel.config(state=tk.DISABLED)
+        self.button_stop_search.config(state=tk.DISABLED)
+
+    def close_application(self):
+        if self.searching:
+            self.stop_search()  # Stop the search if ongoing
+        self.root.destroy()  # Close the application
+        os._exit(0)  # Forcefully terminate the program
 
     def search_files(self):
         path = self.entry_path.get()
@@ -193,7 +204,7 @@ class App:
             self.root.after(0, lambda: messagebox.showwarning("Input Error", "Please provide path, filename match, and search text."))
             self.searching = False
             self.root.after(0, lambda: self.button_search.config(state=tk.NORMAL))
-            self.root.after(0, lambda: self.button_cancel.config(state=tk.DISABLED))
+            self.root.after(0, lambda: self.button_stop_search.config(state=tk.DISABLED))
             return
 
         self.searcher = ExcelSearcher(path, recursive=recursive_search)
@@ -234,7 +245,7 @@ class App:
         # Reset search state
         self.searching = False
         self.root.after(0, lambda: self.button_search.config(state=tk.NORMAL))
-        self.root.after(0, lambda: self.button_cancel.config(state=tk.DISABLED))
+        self.root.after(0, lambda: self.button_stop_search.config(state=tk.DISABLED))
 
     def update_progress(self, current_subdir):
         current_time = time.time()  # Get the current time
