@@ -78,6 +78,8 @@ class ExcelSearcher:
         self.searching = False
 
 
+import tkinter as tk
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -85,70 +87,71 @@ class App:
 
         # Initialize the config parser
         self.config = configparser.ConfigParser()
-        self.config_file = 'app_config.ini'
+        self.config_file = os.path.join(tempfile.gettempdir(), 'app_config.ini')
         self.load_config()
 
         self.searching = False  # Flag to control the search process
 
         # Path input
         self.label_path = tk.Label(root, text="Path to search:")
-        self.label_path.grid(row=0, column=0, padx=10, pady=10)
+        self.label_path.grid(row=0, column=0, padx=10, pady=5, sticky='e')
         
         self.entry_path = tk.Entry(root, width=50)
-        self.entry_path.grid(row=0, column=1, padx=10, pady=10)
+        self.entry_path.grid(row=0, column=1, padx=10, pady=5, sticky='w')
         self.entry_path.insert(0, self.config.get('LAST_INPUTS', 'path', fallback=''))
         
         self.button_browse = tk.Button(root, text="Browse", command=self.browse_path)
-        self.button_browse.grid(row=0, column=2, padx=10, pady=10)
-        
+        self.button_browse.grid(row=0, column=2, padx=10, pady=5)
+
         # Search text input
         self.label_search_text = tk.Label(root, text="Search text:")
-        self.label_search_text.grid(row=1, column=0, padx=10, pady=10)
+        self.label_search_text.grid(row=1, column=0, padx=10, pady=5, sticky='e')
         
         self.entry_search_text = tk.Entry(root, width=50)
-        self.entry_search_text.grid(row=1, column=1, padx=10, pady=10)
+        self.entry_search_text.grid(row=1, column=1, padx=10, pady=5, sticky='w')
         self.entry_search_text.insert(0, self.config.get('LAST_INPUTS', 'search_text', fallback=''))
 
         # Filename match input
         self.label_fname_match = tk.Label(root, text="Filename match:")
-        self.label_fname_match.grid(row=2, column=0, padx=10, pady=10)
+        self.label_fname_match.grid(row=2, column=0, padx=10, pady=5, sticky='e')
         
         self.entry_fname_match = tk.Entry(root, width=50)
-        self.entry_fname_match.grid(row=2, column=1, padx=10, pady=10)
+        self.entry_fname_match.grid(row=2, column=1, padx=10, pady=5, sticky='w')
         self.entry_fname_match.insert(0, self.config.get('LAST_INPUTS', 'fname_match', fallback=''))
 
         # Checkbox to open results in text editor
         self.var_open_in_editor = tk.BooleanVar()
         self.check_open_in_editor = tk.Checkbutton(root, text="Open results in text editor", variable=self.var_open_in_editor)
-        self.check_open_in_editor.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+        self.check_open_in_editor.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky='w')
         
         self.var_open_in_editor.set(self.config.getboolean('LAST_INPUTS', 'open_in_editor', fallback=False))
 
         # Checkbox to search recursively
         self.var_recursive_search = tk.BooleanVar()
         self.check_recursive_search = tk.Checkbutton(root, text="Search recursively", variable=self.var_recursive_search)
-        self.check_recursive_search.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+        self.check_recursive_search.grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky='w')
         
         self.var_recursive_search.set(self.config.getboolean('LAST_INPUTS', 'recursive_search', fallback=False))
 
-        # Search button
+        # Control buttons
         self.button_search = tk.Button(root, text="Search", command=self.start_search)
-        self.button_search.grid(row=5, column=1, padx=10, pady=10)
+        self.button_search.grid(row=5, column=0, padx=10, pady=5, sticky='e')
 
-        # Stop search button
         self.button_stop_search = tk.Button(root, text="Stop", command=self.stop_search, state=tk.DISABLED)
-        self.button_stop_search.grid(row=5, column=2, padx=10, pady=10)
+        self.button_stop_search.grid(row=5, column=1, padx=10, pady=5)
+
+        self.button_close = tk.Button(root, text="Close", command=self.close_application)
+        self.button_close.grid(row=5, column=2, padx=10, pady=5, sticky='w')
         
         # Results display
         self.text_results = tk.Text(root, width=80, height=20)
-        self.text_results.grid(row=6, column=0, columnspan=3, padx=10, pady=10)
+        self.text_results.grid(row=6, column=0, columnspan=5, padx=10, pady=10, sticky='nsew')
 
-        # Close button
-        self.button_close = tk.Button(root, text="Close", command=self.close_application)
-        self.button_close.grid(row=5, column=3, padx=10, pady=10)
+        # Configure grid weights to make the text box expandable
+        self.root.grid_rowconfigure(6, weight=10)
+        self.root.grid_columnconfigure(1, weight=10)
 
         self.last_update_time = 0  # Variable to keep track of the last update time
-
 
     def load_config(self):
         self.config.read(self.config_file)
@@ -182,16 +185,10 @@ class App:
         search_thread.start()
 
     def stop_search(self):
-        self.searcher.stop_search()  # stop_search the search in the searcher instance
+        self.searcher.stop_search()  # Stop the search in the searcher instance
         self.searching = False
         self.button_search.config(state=tk.NORMAL)
         self.button_stop_search.config(state=tk.DISABLED)
-
-    def close_application(self):
-        if self.searching:
-            self.stop_search()  # Stop the search if ongoing
-        self.root.destroy()  # Close the application
-        os._exit(0)  # Forcefully terminate the program
 
     def search_files(self):
         path = self.entry_path.get()
@@ -290,6 +287,12 @@ class App:
             subprocess.call(['open' if os.uname().sysname == 'Darwin' else 'xdg-open', folder])
         else:
             print(f"Unsupported OS: {os.name}")
+
+    def close_application(self):
+        if self.searching:
+            self.stop_search()  # Stop the search if ongoing
+        self.root.destroy()  # Close the application
+        os._exit(0)  # Forcefully terminate the program
 
 # Run the app
 root = tk.Tk()
