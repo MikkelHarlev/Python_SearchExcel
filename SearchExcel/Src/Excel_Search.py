@@ -41,7 +41,7 @@ class ExcelSearcher:
                 subdir_path = os.path.join(self.base_folder, subdir)
                 if os.path.isdir(subdir_path):
                     if progress_callback:
-                        progress_callback("Scanning directories")  # Call the callback with the current subdir
+                        progress_callback(f"Scanning directories {subdir}")  # Call the callback with the current subdir
                     for file_name in os.listdir(subdir_path):
                         if file_matches(file_name):
                             found_files.append(os.path.join(subdir_path, file_name))
@@ -67,7 +67,7 @@ class ExcelSearcher:
 
         return found_rows
 
-    def search_excel_files_with_text(self, fname_match, search_text, progress_callback=None, include_csv=False):
+    def search_excel_files_with_text(self, fname_match, search_text, progress_callback=None, search_results_callback = None, include_csv=False):
         self.searching = True
         excel_files = self.search_excel_files(fname_match, progress_callback, include_csv)
         files_with_text = []
@@ -79,6 +79,9 @@ class ExcelSearcher:
             found_rows = self.search_excel(file, search_text)
             if found_rows:
                 files_with_text.append((file, found_rows))
+                search_results_callback("Found: ", file, found_rows)
+
+
 
         self.searching = False
         return files_with_text
@@ -239,7 +242,7 @@ class App:
             return
 
         self.searcher = ExcelSearcher(path, recursive=recursive_search)
-        found_files = self.searcher.search_excel_files_with_text(fname_match, search_text, self.update_progress, include_csv)
+        found_files = self.searcher.search_excel_files_with_text(fname_match, search_text, self.update_progress, self.update_search_results, include_csv)
 
         if found_files:
             self.root.after(0, lambda: self.text_results.delete(1.0, tk.END))
@@ -256,18 +259,8 @@ class App:
                 subdir_name = os.path.basename(os.path.dirname(file))
                 file_name = os.path.basename(file)
 
-                def insert_file_and_rows(file, found_rows):
-                    start_index = self.text_results.index(tk.INSERT)
-                    self.text_results.insert(tk.END, f"{subdir_name}/{file_name}\n")
-                    end_index = self.text_results.index(tk.INSERT)
-                    self.text_results.tag_add("link", start_index, end_index)
-
-                    for row in found_rows:
-                        row_data = ', '.join([str(cell) for cell in row])
-                        self.text_results.insert(tk.END, f"    {row_data}\n")
-
-                # Directly call the function to insert the file name and rows immediately
-                self.root.after(0, lambda f=file, r=found_rows: insert_file_and_rows(f, r))
+                # Use the new update_search_results function
+                self.root.after(0, lambda s=subdir_name, f=file_name, r=found_rows: self.update_search_results(s, f, r))
 
                 results.append((subdir_name, file_name, found_rows))
 
@@ -297,6 +290,16 @@ class App:
                 self.last_update_time = time.time()  # Update the last update time
             
             self.root.after(0, update_text)
+
+    def update_search_results(self, subdir_name, file_name, found_rows):
+        start_index = self.text_results.index(tk.INSERT)
+        self.text_results.insert(tk.END, f"{subdir_name}/{file_name}\n")
+        end_index = self.text_results.index(tk.INSERT)
+        self.text_results.tag_add("link", start_index, end_index)
+
+        for row in found_rows:
+            row_data = ', '.join([str(cell) for cell in row])
+            self.text_results.insert(tk.END, f"    {row_data}\n")
 
     def write_results_to_temp_file(self, results):
         with tempfile.NamedTemporaryFile(delete=False, prefix="jentmp_", suffix='.txt', mode='w') as temp_file:
