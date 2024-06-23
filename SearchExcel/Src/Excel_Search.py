@@ -193,9 +193,7 @@ class ExcelSearcher:
             found_rows = self.search_excel(file, search_text)
             if found_rows:
                 files_with_text.append((file, found_rows))
-                search_results_callback("Found: ", file, found_rows)
-
-
+                search_results_callback(file, found_rows)
 
         self.searching = False
         return files_with_text
@@ -214,11 +212,6 @@ class App:
         self.search_forced_stop = False
         width_fields = 80
 
-        # Initialize the config parser
-        self.config = configparser.ConfigParser()
-        self.config_file = os.path.join(tempfile.gettempdir(), 'app_config.ini')
-        self.load_config()
-
         self.searching = False  # Flag to control the search process
 
         # Path input
@@ -227,7 +220,6 @@ class App:
         
         self.entry_path = tk.Entry(root, width=width_fields)
         self.entry_path.grid(row=0, column=1, padx=10, pady=5, sticky='w')
-        self.entry_path.insert(0, self.config.get('LAST_INPUTS', 'path', fallback=''))
         
         # Search text input
         self.label_search_text = tk.Label(root, text="Search text:")
@@ -235,7 +227,6 @@ class App:
         
         self.entry_search_text = tk.Entry(root, width=width_fields)
         self.entry_search_text.grid(row=1, column=1, padx=10, pady=5, sticky='w')
-        self.entry_search_text.insert(0, self.config.get('LAST_INPUTS', 'search_text', fallback=''))
 
         # Filename match input
         self.label_fname_match = tk.Label(root, text="Filename match:")
@@ -243,7 +234,6 @@ class App:
         
         self.entry_fname_match = tk.Entry(root, width=width_fields)
         self.entry_fname_match.grid(row=2, column=1, padx=10, pady=5, sticky='w')
-        self.entry_fname_match.insert(0, self.config.get('LAST_INPUTS', 'fname_match', fallback=''))
 
         self.button_browse = tk.Button(root, text="Browse", command=self.browse_path)
         self.button_browse.grid(row=0, column=3, padx=10, pady=5)
@@ -253,15 +243,11 @@ class App:
         self.check_open_in_editor = tk.Checkbutton(root, text="Open results in text editor", variable=self.var_open_in_editor)
         self.check_open_in_editor.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky='w')
         
-        self.var_open_in_editor.set(self.config.getboolean('LAST_INPUTS', 'open_in_editor', fallback=False))
-
         # Checkbox to search recursively
         self.var_recursive_search = tk.BooleanVar()
         self.check_recursive_search = tk.Checkbutton(root, text="All subfolders", variable=self.var_recursive_search)
         self.check_recursive_search.grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky='w')
         
-        self.var_recursive_search.set(self.config.getboolean('LAST_INPUTS', 'recursive_search', fallback=False))
-
         # Control buttons
         self.button_search = tk.Button(root, text="Search", command=self.start_search)
         self.button_search.grid(row=5, column=1, padx=10, pady=5, sticky='e')
@@ -299,8 +285,20 @@ class App:
         self.root.bind('<Return>', lambda event: self.start_search())
         self.root.bind('<Escape>', lambda event: self.stop_search())
 
+        # Initialize the config parser
+        self.config = configparser.ConfigParser()
+        self.config_file = os.path.join(tempfile.gettempdir(), 'app_config.ini')
+        self.load_config()
+
     def load_config(self):
         self.config.read(self.config_file)
+        if self.config.has_section('LAST_INPUTS'):
+            self.entry_path.insert(0, self.config.get('LAST_INPUTS', 'path', fallback=''))
+            self.entry_fname_match.insert(0, self.config.get('LAST_INPUTS', 'fname_match', fallback=''))
+            self.entry_search_text.insert(0, self.config.get('LAST_INPUTS', 'search_text', fallback=''))
+            self.var_open_in_editor.set(self.config.getboolean('LAST_INPUTS', 'open_in_editor', fallback=False))
+            self.var_recursive_search.set(self.config.getboolean('LAST_INPUTS', 'recursive_search', fallback=False))
+            self.var_include_csv.set(self.config.getboolean('LAST_INPUTS', 'include_csv', fallback=False))
     
     def save_config(self):
         if not self.config.has_section('LAST_INPUTS'):
@@ -310,6 +308,7 @@ class App:
         self.config.set('LAST_INPUTS', 'search_text', self.entry_search_text.get())
         self.config.set('LAST_INPUTS', 'open_in_editor', str(self.var_open_in_editor.get()))
         self.config.set('LAST_INPUTS', 'recursive_search', str(self.var_recursive_search.get()))
+        self.config.set('LAST_INPUTS', 'include_csv', str(self.var_include_csv.get()))
         with open(self.config_file, 'w') as configfile:
             self.config.write(configfile)
 
@@ -326,8 +325,6 @@ class App:
         self.button_stop_search.config(state=tk.NORMAL)
         self.text_results.delete(1.0, tk.END)
         self.status_label.config(text="Status: Searching...")
-        start_index = self.text_results.index(tk.INSERT)
-        self.root.after(0, lambda si=start_index, fn=f"Searching:": "Dir: ")
         search_thread = threading.Thread(target=self.search_files)
         search_thread.daemon = True  # Make the thread a daemon thread
         search_thread.start()
@@ -356,34 +353,13 @@ class App:
             return
 
         self.searcher = ExcelSearcher(path, recursive=recursive_search)
-        found_files = self.searcher.search_excel_files_with_text(fname_match, search_text, self.update_progress, self.update_search_results, include_csv)
-
-        if found_files:
-            self.root.after(0, lambda: self.text_results.delete(1.0, tk.END))
-            self.root.after(0, lambda: self.text_results.tag_config("link", foreground="blue", underline=True))
-            self.root.after(0, lambda: self.text_results.tag_bind("link", "<Button-1>", self.open_file_location))
-            self.root.after(0, lambda: self.text_results.tag_bind("link", "<Enter>", lambda e: self.text_results.config(cursor="hand2")))
-            self.root.after(0, lambda: self.text_results.tag_bind("link", "<Leave>", lambda e: self.text_results.config(cursor="")))
-
-            results = []  # Store results for text editor
-
-            for file, found_rows in found_files:
-                if not self.searching:
-                    break
-                subdir_name = os.path.basename(os.path.dirname(file))
-                file_name = os.path.basename(file)
-
-                # Use the new update_search_results function
-                self.root.after(0, lambda s=subdir_name, f=file_name, r=found_rows: self.update_search_results(s, f, r))
-
-                results.append((os.path.dirname(file), file_name, found_rows))
-
-            if open_in_editor and self.searching:
-                temp_file_path = self.write_results_to_temp_file(results)
-                self.open_temp_file(temp_file_path)
-        else:
-            if not self.search_forced_stop:
-                self.root.after(0, lambda: messagebox.showinfo("No Results", "No matching files found."))
+        self.searcher.search_excel_files_with_text(
+            fname_match,
+            search_text,
+            self.update_progress,
+            self.update_search_results,
+            include_csv
+        )
 
         # Save the current inputs
         self.save_config()
@@ -405,11 +381,21 @@ class App:
 
             self.root.after(0, update_text)
 
-    def update_search_results(self, subdir_name, file_name, found_rows):
+    def update_search_results(self, full_path, found_rows):
+        subdir_name = os.path.basename(os.path.dirname(full_path))
+        file_name = os.path.basename(full_path)
         start_index = self.text_results.index(tk.INSERT)
         self.text_results.insert(tk.END, f"{subdir_name}/{file_name}\n")
         end_index = self.text_results.index(tk.INSERT)
         self.text_results.tag_add("link", start_index, end_index)
+
+        # Configure the tag to display links in blue and underlined
+        self.text_results.tag_config("link", foreground="blue", underline=True)
+
+        # Add a custom attribute to the link tag with the full file path
+        self.text_results.tag_bind("link", "<Button-1>", lambda event, fp=full_path: self.open_file_location(fp))
+        self.text_results.tag_bind("link", "<Enter>", lambda e: self.text_results.config(cursor="hand2"))
+        self.text_results.tag_bind("link", "<Leave>", lambda e: self.text_results.config(cursor=""))
 
         for row in found_rows:
             row_data = ', '.join([str(cell) for cell in row])
@@ -432,15 +418,9 @@ class App:
         else:
             print(f"Unsupported OS: {os.name}")
 
-    def open_file_location(self, event):
-        index = self.text_results.index("@%s,%s" % (event.x, event.y))
-        line = self.text_results.get(index + " linestart", index + " lineend")
-        print(line)
-        folder_path = line.split("/")[0]
-        file_name = line.split("/")[1]
-        full_path = os.path.join(self.entry_path.get(), folder_path, file_name)
+    def open_file_location(self, full_path):
         folder = os.path.dirname(full_path)
-
+        
         if os.name == 'nt':  # For Windows
             os.startfile(folder)
         elif os.name == 'posix':  # For macOS and Linux
