@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from tkinter.font import Font
 import os
 import fnmatch
 import openpyxl
@@ -8,6 +9,88 @@ import subprocess
 import configparser
 import threading
 import time
+import xlrd
+import csv
+import chardet
+
+DEBUG = False
+
+#----------------------------------------------------------------------------------------------
+def shorten_path(path, max_length=None):
+    """
+    Shortens a path by showing the start and end, and shortening the middle with '...'
+    
+    Args:
+        path (str): The original path.
+        max_length (int): The maximum length of the shortened path. If None, defaults to 100 if DEBUG is True, otherwise 50.
+    
+    Returns:
+        str: The shortened path if it exceeds max_length, otherwise the original path.
+    """
+    
+    # Normalize path separators to the system's default
+    path = os.path.normpath(path)
+    
+    if max_length is None:
+        max_length = 100 if DEBUG else 50
+    
+    if len(path) <= max_length:
+        return path
+
+    # Split the path into components
+    path_parts = path.split(os.sep)
+    
+    # Add the root (e.g., "C:\")
+    shortened = path_parts[0] + os.sep + path_parts[1]
+    
+    # Add components from the beginning until the length exceeds the limit
+    for i in range(2, len(path_parts)):
+        if len(shortened + os.sep + os.sep.join(path_parts[i:])) <= max_length:
+            shortened = os.sep.join(path_parts[:i + 1])
+        else:
+            break
+    
+    # Add the trailing components ensuring the length stays within limit
+    while len(shortened) + 3 + len(os.sep + os.sep.join(path_parts[i:])) > max_length:
+        i += 1
+    
+    return shortened + os.sep + "..." + os.sep + os.sep.join(path_parts[i:])
+#----------------------------------------------------------------------------------------------
+
+def shorten_path_pixels(path, max_pixels = 500, widget=None):
+    def text_length_in_pixels(text):
+        font = Font(font=widget.cget("font"))
+        return font.measure(text)
+
+    # Normalize path separators to the system's default
+    path = os.path.normpath(path)
+
+    if text_length_in_pixels(path) <= max_pixels:
+        return path
+
+    # Split the path into components
+    path_parts = path.split(os.sep)
+
+    # Add the root (e.g., "C:\")
+    shortened = path_parts[0] + os.sep
+
+    # Add components from the beginning until the length exceeds the limit
+    i = 1
+    while i < len(path_parts):
+        next_part = shortened + os.sep + path_parts[i]
+        if text_length_in_pixels(next_part + os.sep + '...') + text_length_in_pixels(os.sep.join(path_parts[-1:])) > max_pixels / 2:
+            break
+        shortened = next_part
+        i += 1
+
+    # Add the trailing components ensuring the length stays within the limit
+    trailing = os.sep.join(path_parts[i:])
+    while text_length_in_pixels(shortened + os.sep + '...' + os.sep + trailing) > max_pixels and i < len(path_parts):
+        i += 1
+        trailing = os.sep.join(path_parts[i:])
+
+    return shortened + os.sep + '...' + os.sep + trailing
+
 
 class ExcelSearcher:
     def __init__(self, base_folder, recursive=False):
@@ -21,6 +104,8 @@ class ExcelSearcher:
         def file_matches(file_name):
             return (
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xlsx') or
+                fnmatch.fnmatch(file_name, f'*{fname_match}*.xltx') or
+                fnmatch.fnmatch(file_name, f'*{fname_match}*.xlsm') or
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xls') or
                 (include_csv and fnmatch.fnmatch(file_name, f'*{fname_match}*.csv'))
             )
@@ -48,22 +133,51 @@ class ExcelSearcher:
         return found_files
 
     def search_excel(self, file_path, search_text):
-        # Load the workbook and select the active worksheet
-        workbook = openpyxl.load_workbook(file_path)
-        sheet = workbook.active
+        def detect_encoding(file_path):
+            with open(file_path, 'rb') as f:
+                result = chardet.detect(f.read())
+            return result['encoding']
 
-        # List to store the rows containing the found text
         found_rows = []
 
-        # Iterate over each row to search for the text
-        for row in sheet.iter_rows():
-            if not self.searching:
-                break
-            for cell in row:
-                if cell.value and search_text.lower() in str(cell.value).lower():
-                    # If the text is found, append the entire row to found_rows
-                    found_rows.append([cell.value for cell in row])
-                    return found_rows  # Return the rows immediately if found
+        if file_path.lower().endswith(('.xlsx', '.xltx', '.xlsm')):
+            workbook = openpyxl.load_workbook(file_path)
+            sheet = workbook.active
+            for row in sheet.iter_rows():
+                if not self.searching:
+                    break
+                for cell in row:
+                    if cell.value and search_text.lower() in str(cell.value).lower():
+                        found_rows.append([cell.value for cell in row])
+                        return found_rows  # Return the rows immediately if found
+
+        elif file_path.lower().endswith('.xls'):
+            workbook = xlrd.open_workbook(file_path)
+            sheet = workbook.sheet_by_index(0)
+            for row_idx in range(sheet.nrows):
+                if not self.searching:
+                    break
+                row = sheet.row(row_idx)
+                for cell in row:
+                    cell_value = cell.value
+                    if cell_value and search_text.lower() in str(cell_value).lower():
+                        found_rows.append([cell.value for cell in row])
+                        return found_rows  # Return the rows immediately if found
+
+        elif file_path.lower().endswith('.csv'):
+            encoding = detect_encoding(file_path)
+            with open(file_path, 'r', newline='', encoding=encoding) as csvfile:
+                csvreader = csv.reader(csvfile, delimiter=';')
+                for row in csvreader:
+                    if not self.searching:
+                        break
+                    for cell in row:
+                        if search_text.lower() in cell.lower():
+                            found_rows.append(row)
+                            return found_rows  # Return the rows immediately if found
+
+        else:
+            raise ValueError("Unsupported file format")
 
         return found_rows
 
@@ -262,7 +376,7 @@ class App:
                 # Use the new update_search_results function
                 self.root.after(0, lambda s=subdir_name, f=file_name, r=found_rows: self.update_search_results(s, f, r))
 
-                results.append((subdir_name, file_name, found_rows))
+                results.append((os.path.dirname(file), file_name, found_rows))
 
             if open_in_editor and self.searching:
                 temp_file_path = self.write_results_to_temp_file(results)
@@ -286,9 +400,9 @@ class App:
 
         if elapsed_time >= 0.1:  # Check if at least 100ms have passed
             def update_text():
-                self.status_label.config(text=f"Searching in: {current_subdir}")
+                self.status_label.config(text=f"Searching in: {shorten_path_pixels(current_subdir, widget=self.status_label)}")
                 self.last_update_time = time.time()  # Update the last update time
-            
+
             self.root.after(0, update_text)
 
     def update_search_results(self, subdir_name, file_name, found_rows):
@@ -321,6 +435,7 @@ class App:
     def open_file_location(self, event):
         index = self.text_results.index("@%s,%s" % (event.x, event.y))
         line = self.text_results.get(index + " linestart", index + " lineend")
+        print(line)
         folder_path = line.split("/")[0]
         file_name = line.split("/")[1]
         full_path = os.path.join(self.entry_path.get(), folder_path, file_name)
