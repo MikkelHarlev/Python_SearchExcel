@@ -248,6 +248,11 @@ class App:
         self.check_recursive_search = tk.Checkbutton(root, text="All subfolders", variable=self.var_recursive_search)
         self.check_recursive_search.grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky='w')
         
+        # Checkbox to include CSV files
+        self.var_include_csv = tk.BooleanVar()
+        self.check_include_csv = tk.Checkbutton(root, text="Include CSV files", variable=self.var_include_csv)
+        self.check_include_csv.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+
         # Control buttons
         self.button_search = tk.Button(root, text="Search", command=self.start_search)
         self.button_search.grid(row=5, column=1, padx=10, pady=5, sticky='e')
@@ -274,11 +279,6 @@ class App:
         # Configure grid weights to make the text box expandable
         self.root.grid_rowconfigure(6, weight=10)
         self.root.grid_columnconfigure(1, weight=10)
-
-        # Checkbox to include CSV files
-        self.var_include_csv = tk.BooleanVar()
-        self.check_include_csv = tk.Checkbutton(root, text="Include CSV files", variable=self.var_include_csv)
-        self.check_include_csv.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky='w')
 
         self.last_update_time = 0  # Variable to keep track of the last update time
 
@@ -313,7 +313,10 @@ class App:
             self.config.write(configfile)
 
     def browse_path(self):
-        folder_selected = filedialog.askdirectory()
+        initial_dir = self.entry_path.get()
+        if not os.path.isdir(initial_dir):
+            initial_dir = "/"
+        folder_selected = filedialog.askdirectory(initialdir=initial_dir)
         if folder_selected:
             self.entry_path.delete(0, tk.END)
             self.entry_path.insert(0, folder_selected)
