@@ -41,11 +41,31 @@ class ExcelSearcher:
                 subdir_path = os.path.join(self.base_folder, subdir)
                 if os.path.isdir(subdir_path):
                     if progress_callback:
-                        progress_callback(subdir_path)  # Call the callback with the current subdir
+                        progress_callback("Scanning directories")  # Call the callback with the current subdir
                     for file_name in os.listdir(subdir_path):
                         if file_matches(file_name):
                             found_files.append(os.path.join(subdir_path, file_name))
         return found_files
+
+    def search_excel(self, file_path, search_text):
+        # Load the workbook and select the active worksheet
+        workbook = openpyxl.load_workbook(file_path)
+        sheet = workbook.active
+
+        # List to store the rows containing the found text
+        found_rows = []
+
+        # Iterate over each row to search for the text
+        for row in sheet.iter_rows():
+            if not self.searching:
+                break
+            for cell in row:
+                if cell.value and search_text.lower() in str(cell.value).lower():
+                    # If the text is found, append the entire row to found_rows
+                    found_rows.append([cell.value for cell in row])
+                    return found_rows  # Return the rows immediately if found
+
+        return found_rows
 
     def search_excel_files_with_text(self, fname_match, search_text, progress_callback=None, include_csv=False):
         self.searching = True
@@ -55,6 +75,7 @@ class ExcelSearcher:
         for file in excel_files:
             if not self.searching:
                 break
+            progress_callback(str(file))
             found_rows = self.search_excel(file, search_text)
             if found_rows:
                 files_with_text.append((file, found_rows))
@@ -138,6 +159,15 @@ class App:
         self.text_results = tk.Text(root, width=80, height=20)
         self.text_results.grid(row=6, column=0, columnspan=5, padx=10, pady=10, sticky='nsew')
 
+        # Add scrollbar to the text widget
+        self.scrollbar = tk.Scrollbar(root, command=self.text_results.yview)
+        self.text_results.config(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.grid(row=6, column=5, sticky='nsew')
+
+        # Status label
+        self.status_label = tk.Label(root, text="Status: Ready")
+        self.status_label.grid(row=7, column=0, columnspan=5, padx=10, pady=5, sticky='w')
+
         # Configure grid weights to make the text box expandable
         self.root.grid_rowconfigure(6, weight=10)
         self.root.grid_columnconfigure(1, weight=10)
@@ -178,6 +208,7 @@ class App:
         self.button_search.config(state=tk.DISABLED)
         self.button_stop_search.config(state=tk.NORMAL)
         self.text_results.delete(1.0, tk.END)
+        self.status_label.config(text="Status: Searching...")
         start_index = self.text_results.index(tk.INSERT)
         self.root.after(0, lambda si=start_index, fn=f"Searching:": "Dir: ")
         search_thread = threading.Thread(target=self.search_files)
@@ -190,6 +221,7 @@ class App:
         self.searching = False
         self.button_search.config(state=tk.NORMAL)
         self.button_stop_search.config(state=tk.DISABLED)
+        self.status_label.config(text="Status: Search stopped")
 
     def search_files(self):
         path = self.entry_path.get()
@@ -213,6 +245,9 @@ class App:
             self.root.after(0, lambda: self.text_results.delete(1.0, tk.END))
             self.root.after(0, lambda: self.text_results.tag_config("link", foreground="blue", underline=True))
             self.root.after(0, lambda: self.text_results.tag_bind("link", "<Button-1>", self.open_file_location))
+            self.root.after(0, lambda: self.text_results.tag_bind("link", "<Enter>", lambda e: self.text_results.config(cursor="hand2")))
+            self.root.after(0, lambda: self.text_results.tag_bind("link", "<Leave>", lambda e: self.text_results.config(cursor="")))
+
             results = []  # Store results for text editor
 
             for file, found_rows in found_files:
@@ -221,14 +256,18 @@ class App:
                 subdir_name = os.path.basename(os.path.dirname(file))
                 file_name = os.path.basename(file)
 
-                start_index = self.text_results.index(tk.INSERT)
-                self.root.after(0, lambda si=start_index, fn=f"{subdir_name}/{file_name}\n": self.text_results.insert(si, fn))
-                end_index = self.text_results.index(tk.INSERT)
-                self.root.after(0, lambda si=start_index, ei=end_index: self.text_results.tag_add("link", si, ei))
+                def insert_file_and_rows(file, found_rows):
+                    start_index = self.text_results.index(tk.INSERT)
+                    self.text_results.insert(tk.END, f"{subdir_name}/{file_name}\n")
+                    end_index = self.text_results.index(tk.INSERT)
+                    self.text_results.tag_add("link", start_index, end_index)
 
-                for row in found_rows:
-                    row_data = ', '.join([str(cell) for cell in row])
-                    self.root.after(0, lambda rd=f"    {row_data}\n": self.text_results.insert(tk.END, rd))
+                    for row in found_rows:
+                        row_data = ', '.join([str(cell) for cell in row])
+                        self.text_results.insert(tk.END, f"    {row_data}\n")
+
+                # Directly call the function to insert the file name and rows immediately
+                self.root.after(0, lambda f=file, r=found_rows: insert_file_and_rows(f, r))
 
                 results.append((subdir_name, file_name, found_rows))
 
@@ -246,6 +285,7 @@ class App:
         self.searching = False
         self.root.after(0, lambda: self.button_search.config(state=tk.NORMAL))
         self.root.after(0, lambda: self.button_stop_search.config(state=tk.DISABLED))
+        self.root.after(0, lambda: self.status_label.config(text="Status: Search done"))
 
     def update_progress(self, current_subdir):
         current_time = time.time()  # Get the current time
@@ -253,8 +293,7 @@ class App:
 
         if elapsed_time >= 0.1:  # Check if at least 100ms have passed
             def update_text():
-                self.text_results.delete("end-1c linestart", "end")
-                self.text_results.insert(tk.END, f"Searching in: {current_subdir}")
+                self.status_label.config(text=f"Searching in: {current_subdir}")
                 self.last_update_time = time.time()  # Update the last update time
             
             self.root.after(0, update_text)
