@@ -113,7 +113,7 @@ class ExcelSearcher:
         if self.recursive:
             for root, _, files in os.walk(self.base_folder):
                 if progress_callback:
-                    progress_callback(root)  # Call the callback with the current subdir
+                    progress_callback(f"Scanning directories {os.path.basename(os.path.dirname(root))}")  # Call the callback with the parent directory name
                 if not self.searching:
                     break
                 for file_name in files:
@@ -266,6 +266,8 @@ class App:
         # Results display
         self.text_results = tk.Text(root, width=80, height=20)
         self.text_results.grid(row=6, column=0, columnspan=5, padx=10, pady=10, sticky='nsew')
+        self.text_results.config(state=tk.DISABLED)
+        self.text_results.bind("<Tab>", self.focus_next_widget)
 
         # Add scrollbar to the text widget
         self.scrollbar = tk.Scrollbar(root, command=self.text_results.yview)
@@ -326,7 +328,9 @@ class App:
         self.searching = True
         self.button_search.config(state=tk.DISABLED)
         self.button_stop_search.config(state=tk.NORMAL)
+        self.text_results.config(state=tk.NORMAL)
         self.text_results.delete(1.0, tk.END)
+        self.text_results.config(state=tk.DISABLED)
         self.status_label.config(text="Status: Searching...")
         search_thread = threading.Thread(target=self.search_files)
         search_thread.daemon = True  # Make the thread a daemon thread
@@ -356,7 +360,7 @@ class App:
             return
 
         self.searcher = ExcelSearcher(path, recursive=recursive_search)
-        self.searcher.search_excel_files_with_text(
+        found_files = self.searcher.search_excel_files_with_text(
             fname_match,
             search_text,
             self.update_progress,
@@ -366,6 +370,11 @@ class App:
 
         # Save the current inputs
         self.save_config()
+
+        # Check if results should be opened in text editor
+        if open_in_editor and found_files:
+            temp_file_path = self.write_results_to_temp_file(found_files)
+            self.open_temp_file(temp_file_path)
 
         # Reset search state
         self.searching = False
@@ -385,6 +394,7 @@ class App:
             self.root.after(0, update_text)
 
     def update_search_results(self, full_path, found_rows):
+        self.text_results.config(state=tk.NORMAL)
         subdir_name = os.path.basename(os.path.dirname(full_path))
         file_name = os.path.basename(full_path)
         start_index = self.text_results.index(tk.INSERT)
@@ -400,18 +410,23 @@ class App:
         self.text_results.tag_bind("link", "<Enter>", lambda e: self.text_results.config(cursor="hand2"))
         self.text_results.tag_bind("link", "<Leave>", lambda e: self.text_results.config(cursor=""))
 
+        self.text_results.tag_bind("link", "<Button-1>", lambda event, fp=full_path: self.open_file_location(fp))
+
         for row in found_rows:
             row_data = ', '.join([str(cell) for cell in row])
             self.text_results.insert(tk.END, f"    {row_data}\n")
+        self.text_results.config(state=tk.DISABLED)
 
     def write_results_to_temp_file(self, results):
         with tempfile.NamedTemporaryFile(delete=False, prefix="jentmp_", suffix='.txt', mode='w') as temp_file:
-            for subdir_name, file_name, rows in results:
-                temp_file.write(f"{subdir_name}/{file_name}\n")
+            for full_path, rows in results:
+                full_path = full_path.replace('/', '\\')  # Ensure backslash only
+                temp_file.write(f"{full_path}\n")
                 for row in rows:
                     row_data = ', '.join([str(cell) for cell in row])
                     temp_file.write(f"    {row_data}\n")
         return temp_file.name
+
 
     def open_temp_file(self, temp_file_path):
         if os.name == 'nt':  # For Windows
@@ -430,6 +445,10 @@ class App:
             subprocess.call(['open' if os.uname().sysname == 'Darwin' else 'xdg-open', folder])
         else:
             print(f"Unsupported OS: {os.name}")
+
+    def focus_next_widget(self, event):
+        event.widget.tk_focusNext().focus()
+        return "break"
 
     def close_application(self):
         if self.searching:
