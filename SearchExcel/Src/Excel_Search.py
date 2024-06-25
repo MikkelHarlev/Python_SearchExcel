@@ -98,17 +98,19 @@ class ExcelSearcher:
         self.recursive = recursive
         self.searching = False
 
-    def search_excel_files(self, fname_match, progress_callback=None, include_csv=False):
+    def search_excel_files(self, fname_match, progress_callback=None, include_csv=False, include_excel=True, include_text=False):
         found_files = []
 
         def file_matches(file_name):
-            return (
+            is_excel = include_excel and (
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xlsx') or
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xltx') or
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xlsm') or
-                fnmatch.fnmatch(file_name, f'*{fname_match}*.xls') or
-                (include_csv and fnmatch.fnmatch(file_name, f'*{fname_match}*.csv'))
+                fnmatch.fnmatch(file_name, f'*{fname_match}*.xls')
             )
+            is_csv = include_csv and fnmatch.fnmatch(file_name, f'*{fname_match}*.csv')
+            is_text = include_text and fnmatch.fnmatch(file_name, f'*{fname_match}*.txt')
+            return is_excel or is_csv or is_text
 
         if self.recursive:
             for root, _, files in os.walk(self.base_folder):
@@ -176,14 +178,24 @@ class ExcelSearcher:
                             found_rows.append(row)
                             return found_rows  # Return the rows immediately if found
 
+        elif file_path.lower().endswith(('.txt', '.log')):
+            encoding = detect_encoding(file_path)
+            with open(file_path, 'r', encoding=encoding) as txtfile:
+                for line in txtfile:
+                    if not self.searching:
+                        break
+                    if search_text.lower() in line.lower():
+                        found_rows.append([line.strip()])
+                        return found_rows  # Return the lines immediately if found
+
         else:
             raise ValueError("Unsupported file format")
 
         return found_rows
 
-    def search_excel_files_with_text(self, fname_match, search_text, progress_callback=None, search_results_callback = None, include_csv=False):
+    def search_excel_files_with_text(self, fname_match, search_text, progress_callback=None, search_results_callback=None, include_csv=False, include_excel=True, include_text=False):
         self.searching = True
-        excel_files = self.search_excel_files(fname_match, progress_callback, include_csv)
+        excel_files = self.search_excel_files(fname_match, progress_callback, include_csv, include_excel, include_text)
         files_with_text = []
 
         for file in excel_files:
@@ -253,6 +265,16 @@ class App:
         self.check_include_csv = tk.Checkbutton(root, text="Include CSV files", variable=self.var_include_csv)
         self.check_include_csv.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky='w')
 
+        # Checkbox to search Excel files
+        self.var_include_excel = tk.BooleanVar()
+        self.check_include_excel = tk.Checkbutton(root, text="Include Excel files", variable=self.var_include_excel)
+        self.check_include_excel.grid(row=4, column=1, columnspan=2, padx=10, pady=5, sticky='w')
+
+        # Checkbox to search text files
+        self.var_include_text = tk.BooleanVar()
+        self.check_include_text = tk.Checkbutton(root, text="Include Text files", variable=self.var_include_text)
+        self.check_include_text.grid(row=5, column=1, columnspan=2, padx=10, pady=5, sticky='w')
+
         # Control buttons
         self.button_search = tk.Button(root, text="Search", command=self.start_search)
         self.button_search.grid(row=5, column=1, padx=10, pady=5, sticky='e')
@@ -301,6 +323,8 @@ class App:
             self.var_open_in_editor.set(self.config.getboolean('LAST_INPUTS', 'open_in_editor', fallback=False))
             self.var_recursive_search.set(self.config.getboolean('LAST_INPUTS', 'recursive_search', fallback=False))
             self.var_include_csv.set(self.config.getboolean('LAST_INPUTS', 'include_csv', fallback=False))
+            self.var_include_excel.set(self.config.getboolean('LAST_INPUTS', 'include_excel', fallback=True))
+            self.var_include_text.set(self.config.getboolean('LAST_INPUTS', 'include_text', fallback=False))
     
     def save_config(self):
         if not self.config.has_section('LAST_INPUTS'):
@@ -311,6 +335,8 @@ class App:
         self.config.set('LAST_INPUTS', 'open_in_editor', str(self.var_open_in_editor.get()))
         self.config.set('LAST_INPUTS', 'recursive_search', str(self.var_recursive_search.get()))
         self.config.set('LAST_INPUTS', 'include_csv', str(self.var_include_csv.get()))
+        self.config.set('LAST_INPUTS', 'include_excel', str(self.var_include_excel.get()))
+        self.config.set('LAST_INPUTS', 'include_text', str(self.var_include_text.get()))
         with open(self.config_file, 'w') as configfile:
             self.config.write(configfile)
 
@@ -351,6 +377,8 @@ class App:
         open_in_editor = self.var_open_in_editor.get()
         recursive_search = self.var_recursive_search.get()
         include_csv = self.var_include_csv.get()  # Get the state of the CSV inclusion checkbox
+        include_excel = self.var_include_excel.get()  # Get the state of the Excel inclusion checkbox
+        include_text = self.var_include_text.get()  # Get the state of the Text inclusion checkbox
 
         if not path or not fname_match or not search_text:
             self.root.after(0, lambda: messagebox.showwarning("Input Error", "Please provide path, filename match, and search text."))
@@ -365,9 +393,10 @@ class App:
             search_text,
             self.update_progress,
             self.update_search_results,
-            include_csv
+            include_csv,
+            include_excel,
+            include_text
         )
-
         # Save the current inputs
         self.save_config()
 
@@ -424,7 +453,7 @@ class App:
                 temp_file.write(f"{full_path}\n")
                 for row in rows:
                     row_data = ', '.join([str(cell) for cell in row])
-                    temp_file.write(f"    {row_data}\n")
+                    temp_file.write(f"    {row_data}\n\n")
         return temp_file.name
 
 
