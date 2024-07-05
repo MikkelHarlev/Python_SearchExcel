@@ -168,7 +168,7 @@ class ExcelSearcher:
             if found_rows:
                 files_with_text.append((file, found_rows))
                 def update_search_results(self, full_path, subdir_name, file_name, found_rows):
-                search_results_callback(os.path(file), "./", os.path.basename(file), found_rows)
+                    search_results_callback(os.path(file), "./", os.path.basename(file), found_rows)
 
         self.searching = False
         return files_with_text
@@ -331,6 +331,13 @@ class App:
 
         if not path or not fname_match or not search_text:
             self.root.after(0, lambda: messagebox.showwarning("Input Error", "Please provide path, filename match, and search text."))
+            self.searching = False
+            self.root.after(0, lambda: self.button_search.config(state=tk.NORMAL))
+            self.root.after(0, lambda: self.button_stop_search.config(state=tk.DISABLED))
+            return
+
+        if not os.path.exists(path):
+            self.root.after(0, lambda: self.status_label.config(text="Status: The specified directory does not exist"))
             self.searching = False
             self.root.after(0, lambda: self.button_search.config(state=tk.NORMAL))
             self.root.after(0, lambda: self.button_stop_search.config(state=tk.DISABLED))
