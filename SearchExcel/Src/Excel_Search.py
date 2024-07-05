@@ -168,7 +168,7 @@ class ExcelSearcher:
             if found_rows:
                 files_with_text.append((file, found_rows))
                 def update_search_results(self, full_path, subdir_name, file_name, found_rows):
-                search_results_callback(os.path(file), "./", os.path.basename(file), found_rows)
+                    search_results_callback(os.path(file), "./", os.path.basename(file), found_rows)
 
         self.searching = False
         return files_with_text
