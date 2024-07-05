@@ -15,6 +15,7 @@ import chardet
 
 DEBUG = False
 
+#-----------------------------------------------------------------------------------------------------------------------------
 def shorten_path(path, max_length=None):
     """
     Shortens a path by showing the start and end, and shortening the middle with '...'
@@ -43,6 +44,7 @@ def shorten_path(path, max_length=None):
         i += 1
     return shortened + os.sep + "..." + os.sep + os.sep.join(path_parts[i:])
 
+#-----------------------------------------------------------------------------------------------------------------------------
 def shorten_path_pixels(path, max_pixels=500, widget=None):
     def text_length_in_pixels(text):
         font = Font(font=widget.cget("font"))
@@ -69,12 +71,15 @@ def shorten_path_pixels(path, max_pixels=500, widget=None):
     return shortened + os.sep + '...' + os.sep + trailing
 
 
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
 class ExcelSearcher:
     def __init__(self, base_folder, recursive=False):
         self.base_folder = base_folder
         self.recursive = recursive
         self.searching = False
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def search_excel_files(self, fname_match, progress_callback=None, include_csv=False):
         found_files = []
 
@@ -109,6 +114,7 @@ class ExcelSearcher:
                             found_files.append(os.path.join(subdir_path, file_name))
         return found_files
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def search_excel(self, file_path, search_text):
         def detect_encoding(file_path):
             with open(file_path, 'rb') as f:
@@ -155,6 +161,7 @@ class ExcelSearcher:
 
         return found_rows
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def search_excel_files_with_text(self, fname_match, search_text, progress_callback=None, search_results_callback=None, include_csv=False):
         self.searching = True
         excel_files = self.search_excel_files(fname_match, progress_callback, include_csv)
@@ -173,10 +180,13 @@ class ExcelSearcher:
         self.searching = False
         return files_with_text
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def stop_search(self):
         self.searching = False
 
 
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
 class App:
     def __init__(self, root):
         self.root = root
@@ -263,6 +273,7 @@ class App:
         self.config_file = os.path.join(tempfile.gettempdir(), 'app_config.ini')
         self.load_config()
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def load_config(self):
         """Load the configuration from the config file."""
         self.config.read(self.config_file)
@@ -274,6 +285,7 @@ class App:
             self.var_recursive_search.set(self.config.getboolean('LAST_INPUTS', 'recursive_search', fallback=False))
             self.var_include_csv.set(self.config.getboolean('LAST_INPUTS', 'include_csv', fallback=False))
     
+    #-----------------------------------------------------------------------------------------------------------------------------
     def save_config(self):
         """Save the current configuration to the config file."""
         if not self.config.has_section('LAST_INPUTS'):
@@ -287,6 +299,7 @@ class App:
         with open(self.config_file, 'w') as configfile:
             self.config.write(configfile)
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def browse_path(self):
         """Open a file dialog to select a directory, starting from the current path."""
         initial_dir = self.entry_path.get()
@@ -297,6 +310,7 @@ class App:
             self.entry_path.delete(0, tk.END)
             self.entry_path.insert(0, folder_selected)
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def start_search(self):
         """Start the search in a new thread."""
         self.search_forced_stop = False
@@ -311,6 +325,7 @@ class App:
         search_thread.daemon = True  # Make the thread a daemon thread
         search_thread.start()
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def stop_search(self):
         """Stop the search."""
         self.search_forced_stop = True
@@ -320,6 +335,7 @@ class App:
         self.button_stop_search.config(state=tk.DISABLED)
         self.status_label.config(text="Status: Search stopped")
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def search_files(self):
         """Search for files matching the criteria and update the results."""
         path = self.entry_path.get()
@@ -379,6 +395,7 @@ class App:
         self.root.after(0, lambda: self.button_stop_search.config(state=tk.DISABLED))
         self.root.after(0, lambda: self.status_label.config(text="Status: Search done"))
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def update_progress(self, current_subdir):
         """Update the status label with the current subdirectory being searched."""
         current_time = time.time()
@@ -391,6 +408,7 @@ class App:
 
             self.root.after(0, update_text)
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def update_search_results(self, full_path, subdir_name, file_name, found_rows):
         """Update the search results in the text widget."""
         start_index = self.text_results.index(tk.INSERT)
@@ -403,6 +421,7 @@ class App:
             row_data = ', '.join([str(cell) for cell in row])
             self.text_results.insert(tk.END, f"    {row_data}\n")
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def write_results_to_temp_file(self, results):
         """Write search results to a temporary file."""
         with tempfile.NamedTemporaryFile(delete=False, prefix="jentmp_", suffix='.txt', mode='w') as temp_file:
@@ -413,6 +432,7 @@ class App:
                     temp_file.write(f"    {row_data}\n")
         return temp_file.name
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def open_temp_file(self, temp_file_path):
         """Open the temporary file with the system's default text editor."""
         if os.name == 'nt':  # For Windows
@@ -422,6 +442,7 @@ class App:
         else:
             print(f"Unsupported OS: {os.name}")
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def open_file_location(self, full_path):
         """Open the file location in the system's file explorer."""
         folder = os.path.dirname(full_path)
@@ -432,6 +453,7 @@ class App:
         else:
             print(f"Unsupported OS: {os.name}")
 
+    #-----------------------------------------------------------------------------------------------------------------------------
     def close_application(self):
         """Close the application, stopping the search if ongoing."""
         if self.searching:
