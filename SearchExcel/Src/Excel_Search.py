@@ -105,7 +105,6 @@ class ExcelSearcher:
             is_excel = include_excel and (
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xlsx') or
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xltx') or
-                fnmatch.fnmatch(file_name, f'*{fname_match}*.xlsm') or
                 fnmatch.fnmatch(file_name, f'*{fname_match}*.xls')
             )
             is_csv = include_csv and fnmatch.fnmatch(file_name, f'*{fname_match}*.csv')
@@ -142,7 +141,7 @@ class ExcelSearcher:
 
         found_rows = []
 
-        if file_path.lower().endswith(('.xlsx', '.xltx', '.xlsm')):
+        if file_path.lower().endswith(('.xlsx', '.xltx')):
             workbook = openpyxl.load_workbook(file_path)
             sheet = workbook.active
             for row in sheet.iter_rows():
@@ -154,6 +153,7 @@ class ExcelSearcher:
                         return found_rows  # Return the rows immediately if found
 
         elif file_path.lower().endswith('.xls'):
+            print(f"Opening {file_path}")
             workbook = xlrd.open_workbook(file_path)
             sheet = workbook.sheet_by_index(0)
             for row_idx in range(sheet.nrows):
@@ -189,7 +189,7 @@ class ExcelSearcher:
                         return found_rows  # Return the lines immediately if found
 
         else:
-            raise ValueError("Unsupported file format")
+            print(f"Skipping file {file_path}")
 
         return found_rows
 
